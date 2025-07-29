@@ -3,14 +3,14 @@ const chalk = require('chalk');
 const { getPairingCode } = require('./core/pair.js');
 
 // ⚠️ Get your token from BotFather on Telegram
-const TELEGRAM_BOT_TOKEN = 'YOUR_TELEGRAM_BOT_TOKEN_HERE';
+const TELEGRAM_BOT_TOKEN = '8029175609:AAFyEm6APB8giEJh7-nImaAaFRA0JP2caMY';
 
 console.log(chalk.blue('Starting Telegram Bot controller...'));
 const bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
-console.log(chalk.green('✅ Telegram Bot is listening for commands.'));
+console.log(chalk.green('Telegram Bot is listening for commands.'));
 
 bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(msg.chat.id, `👋 Welcome to the Ultar-MD Control Panel!\n\n🔵 Use /reqpair <whatsapp_number_with_country_code> to get a pairing code.`);
+    bot.sendMessage(msg.chat.id, `Welcome to the Ultar-MD Control Panel!\n\nUse /reqpair <whatsapp_number_with_country_code> to get a pairing code.`);
 });
 
 bot.onText(/\/reqpair (.+)/, async (msg, match) => {
@@ -18,16 +18,16 @@ bot.onText(/\/reqpair (.+)/, async (msg, match) => {
     const phoneNumber = match[1];
 
     try {
-        await bot.sendMessage(chatId, `⏳ Request received! Generating a pairing code for ${phoneNumber}...`);
+        await bot.sendMessage(chatId, `Request received! Generating a pairing code for ${phoneNumber}...`);
         
         const code = await getPairingCode(phoneNumber);
 
-        const response = `✅ Success! Your pairing code is:\n\n*${code}*`;
+        const response = `Success! Your pairing code is:\n\n*${code}*`;
         await bot.sendMessage(chatId, response, { parse_mode: 'Markdown' });
         console.log(chalk.green(`Successfully sent pairing code to user.`));
 
     } catch (error) {
         console.error(chalk.red('Error generating pairing code:'), error);
-        bot.sendMessage(chatId, '🔥 Oops! Something went wrong. Please check the logs.');
+        bot.sendMessage(chatId, 'Oops! Something went wrong. Please check the logs.');
     }
 });
