@@ -5,7 +5,8 @@
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "pair": "node telegram-bot.js"
   },
   "author": "Ultar Owner & Gemini",
   "license": "MIT",
@@ -15,6 +16,7 @@
     "pg": "^8.12.0",
     "sequelize": "^6.37.3",
     "qrcode-terminal": "^0.12.0",
-    "chalk": "^4.1.2"
+    "chalk": "^4.1.2",
+    "node-telegram-bot-api": "^0.66.0"
   }
 }
