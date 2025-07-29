@@ -1,8 +1,6 @@
 const {
     default: makeWASocket,
-    useMultiFileAuthState,
     DisconnectReason,
-    fetchLatestBaileysVersion,
     makeInMemoryStore
 } = require('@whiskeysockets/baileys');
 const { Sequelize, DataTypes } = require('sequelize');
@@ -58,12 +56,49 @@ const createSequelizeStore = () => {
 
 // --- Main Connection Logic ---
 const connect = async () => {
-    const { state, saveCreds } = await useMultiFileAuthState(createSequelizeStore());
+    // This is the corrected authentication logic
+    const auth = createSequelizeStore();
+    const { creds, keys } = await auth.creds.get() || {};
+    const state = {
+        creds: creds || {
+            noiseKey: { private: Buffer.alloc(32), public: Buffer.alloc(32) },
+            signedIdentityKey: { private: Buffer.alloc(32), public: Buffer.alloc(32) },
+            signedPreKey: { keyId: 0, keyPair: { private: Buffer.alloc(32), public: Buffer.alloc(32) }, signature: Buffer.alloc(64) },
+            registrationId: 0,
+            advSecretKey: '',
+            processedHistoryMessages: [],
+            nextPreKeyId: 0,
+            firstUnuploadedPreKeyId: 0,
+            accountSettings: { unarchiveChats: false },
+        },
+        keys: keys || {},
+    };
+
     const bot = makeWASocket({
         logger: pino({ level: config.pino_debug ? 'debug' : 'silent' }),
         printQRInTerminal: true,
         browser: ['Ultar-MD', 'Chrome', '1.0.0'],
-        auth: state
+        auth: {
+            creds: state.creds,
+            keys: {
+                get: async (type, ids) => {
+                    const data = {};
+                    await Promise.all(
+                        ids.map(async (id) => {
+                            let value = await auth.keys.get(type, [id]);
+                            if (type === 'app-state-sync-key' && value) {
+                                value = proto.Message.AppStateSyncKeyData.fromObject(value);
+                            }
+                            data[id] = value;
+                        })
+                    );
+                    return data;
+                },
+                set: async (data) => {
+                    await auth.keys.set(data);
+                }
+            }
+        }
     });
 
     const commands = loadPlugins();
@@ -79,12 +114,12 @@ const connect = async () => {
         }
     });
 
-    bot.ev.on('creds.update', saveCreds);
+    bot.ev.on('creds.update', () => auth.creds.set(bot.authState.creds));
 
     // --- Message Handler ---
     bot.ev.on('messages.upsert', async (chatUpdate) => {
         const message = chatUpdate.messages[0];
-        if (!message.message) return;
+        if (!message.message || message.key.remoteJid === 'status@broadcast') return;
 
         const messageType = Object.keys(message.message)[0];
         const messageText = messageType === 'conversation' ? message.message.conversation :
@@ -92,54 +127,41 @@ const connect = async () => {
 
         if (!messageText) return;
 
-        const prefix = /^[\\/!#.]/gi.test(messageText) ? messageText.match(/^[\\/!#.]/gi)[0] : /^[\\/!#.]/gi.test(messageText) ? messageText.match(/^[\\/!#.]/gi)[0] : '';
+        const prefix = /^[\\/!#.]/gi.test(messageText) ? messageText.match(/^[\\/!#.]/gi)[0] : '';
+        if (!prefix) return;
+
         const commandName = messageText.replace(prefix, '').split(/ +/).shift().toLowerCase();
-        
         const command = commands.get(commandName);
+        
         if (command) {
             try {
                 await command.func(bot, message);
             } catch (error) {
                 console.error(chalk.red(`Error executing command '${commandName}':`), error);
-                await bot.sendMessage(message.key.remoteJid, { text: 'An error occurred while executing the command.' });
             }
         }
     });
-
-    if (config.auto_status_read) {
-        bot.ev.on('messages.upsert', async (chatUpdate) => {
-            if (chatUpdate.messages[0]?.key?.remoteJid === 'status@broadcast') {
-                await bot.readMessages([chatUpdate.messages[0].key]);
-            }
-        });
-    }
 };
 
 // --- Plugin Loader ---
 function loadPlugins() {
     const commands = new Map();
     const pluginsDir = path.join(__dirname, '../plugins');
-    if (!fs.existsSync(pluginsDir)) {
-        console.log(chalk.yellow("Plugins directory not found. No commands will be loaded."));
-        return commands;
-    }
+    if (!fs.existsSync(pluginsDir)) return commands;
 
     const pluginFiles = fs.readdirSync(pluginsDir).filter(file => file.endsWith('.js'));
-    console.log(chalk.blue(`Found ${pluginFiles.length} plugins.`));
-
     pluginFiles.forEach(file => {
         try {
             const plugin = require(path.join(pluginsDir, file));
             if (plugin.command && plugin.func) {
                 commands.set(plugin.command, plugin);
-                console.log(chalk.cyan(`- Loaded command: ${plugin.command}`));
             }
         } catch (error) {
             console.error(chalk.red(`Failed to load plugin ${file}:`), error);
         }
     });
+    console.log(chalk.blue(`Loaded ${commands.size} plugins.`));
     return commands;
 }
 
 module.exports = { connect };
-
